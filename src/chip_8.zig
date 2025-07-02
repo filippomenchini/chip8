@@ -50,6 +50,10 @@ pub fn init() @This() {
     return chip_8;
 }
 
+pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
+    return &self.display;
+}
+
 fn fetch(self: *@This()) u16 {
     const first_byte = @as(u16, self.memory[self.pc]);
     const second_byte = self.memory[self.pc + 1];
