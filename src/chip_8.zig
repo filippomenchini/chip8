@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const DISPLAY_WIDTH = 64;
 const DISPLAY_HEIGHT = 32;
 
@@ -48,6 +50,14 @@ pub fn init() @This() {
     }
 
     return chip_8;
+}
+
+pub fn loadROM(self: *@This(), path: []const u8) !void {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    var buffer: [2000]u8 = undefined;
+    _ = try file.readAll(&buffer);
+    @memcpy(self.memory[512..2512], &buffer);
 }
 
 pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
