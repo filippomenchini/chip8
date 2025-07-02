@@ -103,10 +103,10 @@ fn decode(raw: u16) DecodeError!Instruction {
     const nnn = raw & 0x0FFF;
 
     return switch (op_code) {
-        0x1 => Instruction{ .jump = nnn },
-        0x6 => Instruction{ .setX = .{ .register = x, .value = nn } },
-        0x7 => Instruction{ .addX = .{ .register = x, .value = nn } },
-        0xA => Instruction{ .setI = nnn },
+        0x1 => Instruction{ .jump = @truncate(nnn) },
+        0x6 => Instruction{ .setX = .{ .register = x, .value = @truncate(nn) } },
+        0x7 => Instruction{ .addX = .{ .register = x, .value = @truncate(nn) } },
+        0xA => Instruction{ .setI = @truncate(nnn) },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
         else => DecodeError.InvalidInstruction,
     };
@@ -116,14 +116,14 @@ fn clearDisplay(self: *@This()) void {
     self.display = [_]bool{false} ** (DISPLAY_WIDTH * DISPLAY_HEIGHT);
 }
 
-fn togglePixel(self: *@This(), x: u6, y: u5) void {
-    const index = y * DISPLAY_WIDTH + x;
-    self.display[index] = !self.display[index];
+fn getPixel(self: *@This(), x: u6, y: u5) bool {
+    const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
+    return self.display[index];
 }
 
-fn getPixel(self: *@This(), x: u6, y: u5) bool {
-    const index = y * DISPLAY_WIDTH + x;
-    return self.display[index];
+fn togglePixel(self: *@This(), x: u6, y: u5) void {
+    const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
+    self.display[index] = !self.display[index];
 }
 
 fn execute(self: *@This(), instruction: Instruction) void {
@@ -147,14 +147,20 @@ fn execute(self: *@This(), instruction: Instruction) void {
                 const sprite = self.memory[self.i + i];
 
                 for (0..8) |j| {
-                    const pixel_bit = (sprite >> (7 - j)) & 1;
+                    const pixel_bit = (sprite >> (7 - @as(u3, @intCast(j)))) & 1;
                     const current_x = x + j;
 
                     if (pixel_bit != 0) {
                         if (current_x < DISPLAY_WIDTH and current_y < DISPLAY_HEIGHT) {
-                            const screen_pixel_was_on = self.getPixel(current_x, current_y);
+                            const screen_pixel_was_on = self.getPixel(
+                                @truncate(current_x),
+                                @truncate(current_y),
+                            );
 
-                            self.togglePixel(current_x, current_y);
+                            self.togglePixel(
+                                @truncate(current_x),
+                                @truncate(current_y),
+                            );
 
                             if (screen_pixel_was_on) {
                                 self.registers[0xF] = 1;
