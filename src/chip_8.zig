@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const DISPLAY_WIDTH = 64;
-const DISPLAY_HEIGHT = 32;
+pub const DISPLAY_WIDTH = 64;
+pub const DISPLAY_HEIGHT = 32;
 
 const FONTSET = [_]u8{
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -62,6 +62,12 @@ pub fn loadROM(self: *@This(), path: []const u8) !void {
 
 pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
     return &self.display;
+}
+
+pub fn step(self: *@This()) !void {
+    const instruction_raw = self.fetch();
+    const instruction = try decode(instruction_raw);
+    self.execute(instruction);
 }
 
 fn fetch(self: *@This()) u16 {
