@@ -31,6 +31,7 @@ sp: u8,
 delay_timer: u8,
 sound_timer: u8,
 registers: [16]u8,
+current_raw_instruction: u16,
 
 pub fn init() @This() {
     var chip_8 = @This(){
@@ -43,6 +44,7 @@ pub fn init() @This() {
         .delay_timer = 0,
         .sound_timer = 0,
         .registers = [_]u8{0} ** 16,
+        .current_raw_instruction = 0x0000,
     };
 
     for (FONTSET, 0..) |font, i| {
@@ -66,7 +68,7 @@ pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HE
 
 pub fn step(self: *@This()) !void {
     const instruction_raw = self.fetch();
-    const instruction = try decode(instruction_raw);
+    const instruction = try self.decode(instruction_raw);
     self.execute(instruction);
 }
 
@@ -84,6 +86,8 @@ fn getNibble(raw: u16, position: u2) u4 {
 
 const Instruction = union(enum) {
     clearScreen,
+    returnFromSubroutine,
+    call: u12,
     jump: u12,
     setX: struct { register: u4, value: u8 },
     addX: struct { register: u4, value: u8 },
@@ -91,9 +95,9 @@ const Instruction = union(enum) {
     draw: struct { vx: u4, vy: u4, value: u4 },
 };
 
-const DecodeError = error{InvalidInstruction};
-fn decode(raw: u16) DecodeError!Instruction {
-    if (raw == 0x00E0) return Instruction.clearScreen;
+pub const DecodeError = error{InvalidInstruction};
+fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
+    self.current_raw_instruction = raw;
 
     const op_code = getNibble(raw, 0);
     const x = getNibble(raw, 1);
@@ -103,12 +107,20 @@ fn decode(raw: u16) DecodeError!Instruction {
     const nnn = raw & 0x0FFF;
 
     return switch (op_code) {
+        0x0 => {
+            if (raw == 0x00E0) return Instruction.clearScreen;
+            if (raw == 0x00EE) return Instruction.returnFromSubroutine;
+            unreachable;
+        },
+        0x2 => Instruction{ .call = @truncate(nnn) },
         0x1 => Instruction{ .jump = @truncate(nnn) },
         0x6 => Instruction{ .setX = .{ .register = x, .value = @truncate(nn) } },
         0x7 => Instruction{ .addX = .{ .register = x, .value = @truncate(nn) } },
         0xA => Instruction{ .setI = @truncate(nnn) },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
-        else => DecodeError.InvalidInstruction,
+        else => {
+            return DecodeError.InvalidInstruction;
+        },
     };
 }
 
@@ -130,6 +142,17 @@ fn execute(self: *@This(), instruction: Instruction) void {
     switch (instruction) {
         .jump => |address| {
             self.pc = address;
+            return;
+        },
+        .call => |address| {
+            self.stack[self.sp] = self.pc;
+            self.sp += 1;
+            self.pc = address;
+            return;
+        },
+        .returnFromSubroutine => {
+            self.sp -= 1;
+            self.pc = self.stack[self.sp];
             return;
         },
         .clearScreen => self.clearDisplay(),

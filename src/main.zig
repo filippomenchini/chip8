@@ -6,18 +6,25 @@ const PIXEL_SCALE = 25;
 
 pub fn main() !void {
     var chip8 = Chip8.init();
-    try chip8.loadROM("./IBM Logo.ch8");
+    try chip8.loadROM("./test_opcode.ch8");
+
+    rl.setTraceLogLevel(.none);
 
     const window_width = Chip8.DISPLAY_WIDTH * PIXEL_SCALE;
     const window_height = Chip8.DISPLAY_HEIGHT * PIXEL_SCALE;
+
     rl.initWindow(window_width, window_height, "CHIP-8 Emulator");
     defer rl.closeWindow();
-    rl.setTargetFPS(60);
 
+    rl.setTargetFPS(60);
     while (!rl.windowShouldClose()) {
         chip8.step() catch |err| {
-            std.debug.print("Error: {}\n", .{err});
-            continue;
+            if (err == Chip8.DecodeError.InvalidInstruction) {
+                std.debug.print("Invalid instruction: 0x{X}\n", .{chip8.current_raw_instruction});
+            } else {
+                std.debug.print("Error: {}\n", .{err});
+            }
+            break;
         };
 
         rl.beginDrawing();
