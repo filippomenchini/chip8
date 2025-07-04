@@ -87,6 +87,10 @@ fn getNibble(raw: u16, position: u2) u4 {
 const Instruction = union(enum) {
     clearScreen,
     returnFromSubroutine,
+    skipIfXEqualsNN: struct { vx: u4, value: u8 },
+    skipIfXNotEqualsNN: struct { vx: u4, value: u8 },
+    skipIfXEqualsY: struct { vx: u4, vy: u4 },
+    skipIfXNotEqualsY: struct { vx: u4, vy: u4 },
     call: u12,
     jump: u12,
     setX: struct { register: u4, value: u8 },
@@ -112,10 +116,14 @@ fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
             if (raw == 0x00EE) return Instruction.returnFromSubroutine;
             unreachable;
         },
-        0x2 => Instruction{ .call = @truncate(nnn) },
         0x1 => Instruction{ .jump = @truncate(nnn) },
+        0x3 => Instruction{ .skipIfXEqualsNN = .{ .vx = x, .value = @truncate(nn) } },
+        0x4 => Instruction{ .skipIfXNotEqualsNN = .{ .vx = x, .value = @truncate(nn) } },
+        0x5 => Instruction{ .skipIfXEqualsY = .{ .vx = x, .vy = y } },
+        0x2 => Instruction{ .call = @truncate(nnn) },
         0x6 => Instruction{ .setX = .{ .register = x, .value = @truncate(nn) } },
         0x7 => Instruction{ .addX = .{ .register = x, .value = @truncate(nn) } },
+        0x9 => Instruction{ .skipIfXNotEqualsY = .{ .vx = x, .vy = y } },
         0xA => Instruction{ .setI = @truncate(nnn) },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
         else => {
@@ -140,6 +148,7 @@ fn togglePixel(self: *@This(), x: u6, y: u5) void {
 
 fn execute(self: *@This(), instruction: Instruction) void {
     switch (instruction) {
+        .clearScreen => self.clearDisplay(),
         .jump => |address| {
             self.pc = address;
             return;
@@ -155,10 +164,27 @@ fn execute(self: *@This(), instruction: Instruction) void {
             self.pc = self.stack[self.sp];
             return;
         },
-        .clearScreen => self.clearDisplay(),
+        .skipIfXEqualsNN => |data| {
+            if (self.registers[data.vx] == data.value) {
+                self.pc += 2;
+            }
+        },
+        .skipIfXNotEqualsNN => |data| {
+            if (self.registers[data.vx] != data.value) self.pc += 2;
+        },
+        .skipIfXEqualsY => |data| {
+            if (self.registers[data.vx] == self.registers[data.vy]) self.pc += 2;
+        },
+        .skipIfXNotEqualsY => |data| {
+            if (self.registers[data.vx] != self.registers[data.vy]) self.pc += 2;
+        },
+        .addX => |data| {
+            const result = @addWithOverflow(self.registers[data.register], data.value);
+            self.registers[data.register] = result[0];
+            self.registers[0xF] = result[1];
+        },
         .setI => |i| self.i = i,
         .setX => |data| self.registers[data.register] = data.value,
-        .addX => |data| self.registers[data.register] += data.value,
         .draw => |data| {
             const x = self.registers[data.vx] & (DISPLAY_WIDTH - 1);
             const y = self.registers[data.vy] & (DISPLAY_HEIGHT - 1);
