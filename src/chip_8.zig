@@ -90,6 +90,7 @@ const Instruction = union(enum) {
     skipIfXEqualsNN: struct { vx: u4, value: u8 },
     skipIfXNotEqualsNN: struct { vx: u4, value: u8 },
     skipIfXEqualsY: struct { vx: u4, vy: u4 },
+    logicAndMath: struct { vx: u4, vy: u4, type: u4 },
     skipIfXNotEqualsY: struct { vx: u4, vy: u4 },
     call: u12,
     jump: u12,
@@ -123,6 +124,7 @@ fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
         0x2 => Instruction{ .call = @truncate(nnn) },
         0x6 => Instruction{ .setX = .{ .register = x, .value = @truncate(nn) } },
         0x7 => Instruction{ .addX = .{ .register = x, .value = @truncate(nn) } },
+        0x8 => Instruction{ .logicAndMath = .{ .vx = x, .vy = y, .type = n } },
         0x9 => Instruction{ .skipIfXNotEqualsY = .{ .vx = x, .vy = y } },
         0xA => Instruction{ .setI = @truncate(nnn) },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
@@ -154,7 +156,7 @@ fn execute(self: *@This(), instruction: Instruction) void {
             return;
         },
         .call => |address| {
-            self.stack[self.sp] = self.pc;
+            self.stack[self.sp] = self.pc + 2;
             self.sp += 1;
             self.pc = address;
             return;
@@ -175,13 +177,44 @@ fn execute(self: *@This(), instruction: Instruction) void {
         .skipIfXEqualsY => |data| {
             if (self.registers[data.vx] == self.registers[data.vy]) self.pc += 2;
         },
+        .logicAndMath => |data| {
+            switch (data.type) {
+                0 => self.registers[data.vx] = self.registers[data.vy],
+                1 => self.registers[data.vx] = self.registers[data.vx] | self.registers[data.vy],
+                2 => self.registers[data.vx] = self.registers[data.vx] & self.registers[data.vy],
+                3 => self.registers[data.vx] = self.registers[data.vx] ^ self.registers[data.vy],
+                4 => {
+                    const result = @addWithOverflow(self.registers[data.vx], self.registers[data.vy]);
+                    self.registers[data.vx] = result[0];
+                    self.registers[0xF] = result[1];
+                },
+                5 => {
+                    const result = @subWithOverflow(self.registers[data.vx], self.registers[data.vy]);
+                    self.registers[data.vx] = result[0];
+                    self.registers[0xF] = if (self.registers[data.vx] > self.registers[data.vy]) 1 else 0;
+                },
+                6 => {
+                    self.registers[data.vx] >>= 1;
+                    self.registers[0xF] = self.registers[data.vx] & 0x1;
+                },
+                7 => {
+                    const result = @subWithOverflow(self.registers[data.vy], self.registers[data.vx]);
+                    self.registers[data.vx] = result[0];
+                    self.registers[0xF] = if (self.registers[data.vy] > self.registers[data.vx]) 1 else 0;
+                },
+                0xE => {
+                    self.registers[data.vx] <<= 1;
+                    self.registers[0xF] = (self.registers[data.vx] & 0x80) >> 7;
+                },
+                else => unreachable,
+            }
+        },
         .skipIfXNotEqualsY => |data| {
             if (self.registers[data.vx] != self.registers[data.vy]) self.pc += 2;
         },
         .addX => |data| {
             const result = @addWithOverflow(self.registers[data.register], data.value);
             self.registers[data.register] = result[0];
-            self.registers[0xF] = result[1];
         },
         .setI => |i| self.i = i,
         .setX => |data| self.registers[data.register] = data.value,

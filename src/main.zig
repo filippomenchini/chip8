@@ -27,6 +27,9 @@ pub fn main() !void {
             break;
         };
 
+        // Uncomment for debugging
+        // std.debug.print("Running instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
+
         rl.beginDrawing();
         rl.clearBackground(.black);
 
