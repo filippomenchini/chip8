@@ -32,6 +32,7 @@ delay_timer: u8,
 sound_timer: u8,
 registers: [16]u8,
 current_raw_instruction: u16,
+prng: std.Random.DefaultPrng,
 
 pub fn init() @This() {
     var chip_8 = @This(){
@@ -45,6 +46,7 @@ pub fn init() @This() {
         .sound_timer = 0,
         .registers = [_]u8{0} ** 16,
         .current_raw_instruction = 0x0000,
+        .prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp())),
     };
 
     for (FONTSET, 0..) |font, i| {
@@ -92,6 +94,8 @@ const Instruction = union(enum) {
     skipIfXEqualsY: struct { vx: u4, vy: u4 },
     logicAndMath: struct { vx: u4, vy: u4, type: u4 },
     skipIfXNotEqualsY: struct { vx: u4, vy: u4 },
+    jumpWithOffset: u12,
+    random: struct { vx: u4, value: u8 },
     call: u12,
     jump: u12,
     setX: struct { register: u4, value: u8 },
@@ -127,6 +131,8 @@ fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
         0x8 => Instruction{ .logicAndMath = .{ .vx = x, .vy = y, .type = n } },
         0x9 => Instruction{ .skipIfXNotEqualsY = .{ .vx = x, .vy = y } },
         0xA => Instruction{ .setI = @truncate(nnn) },
+        0xB => Instruction{ .jumpWithOffset = @truncate(nnn) },
+        0xC => Instruction{ .random = .{ .vx = x, .value = @truncate(nn) } },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
         else => {
             return DecodeError.InvalidInstruction;
@@ -217,6 +223,14 @@ fn execute(self: *@This(), instruction: Instruction) void {
             self.registers[data.register] = result[0];
         },
         .setI => |i| self.i = i,
+        .jumpWithOffset => |address| {
+            self.pc = address + self.registers[0x0];
+            return;
+        },
+        .random => |data| {
+            const random_value = self.prng.random().int(u8);
+            self.registers[data.vx] = random_value & data.value;
+        },
         .setX => |data| self.registers[data.register] = data.value,
         .draw => |data| {
             const x = self.registers[data.vx] & (DISPLAY_WIDTH - 1);
