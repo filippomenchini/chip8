@@ -31,6 +31,7 @@ sp: u8,
 delay_timer: u8,
 sound_timer: u8,
 registers: [16]u8,
+keypad: [16]bool,
 current_raw_instruction: u16,
 prng: std.Random.DefaultPrng,
 
@@ -45,6 +46,7 @@ pub fn init() @This() {
         .delay_timer = 0,
         .sound_timer = 0,
         .registers = [_]u8{0} ** 16,
+        .keypad = [_]bool{false} ** 16,
         .current_raw_instruction = 0x0000,
         .prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp())),
     };
@@ -72,6 +74,14 @@ pub fn step(self: *@This()) !void {
     const instruction_raw = self.fetch();
     const instruction = try self.decode(instruction_raw);
     self.execute(instruction);
+}
+
+pub fn pressKey(self: *@This(), key: u5) void {
+    self.keypad[key] = true;
+}
+
+pub fn depressKey(self: *@This(), key: u5) void {
+    self.keypad[key] = false;
 }
 
 fn fetch(self: *@This()) u16 {
