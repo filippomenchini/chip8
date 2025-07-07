@@ -26,7 +26,7 @@ const KEY_MAPPING = [_]rl.KeyboardKey{
 
 pub fn main() !void {
     var chip8 = Chip8.init();
-    try chip8.loadROM("./breakout.ch8");
+    try chip8.loadROM("./test_opcode.ch8");
 
     rl.setTraceLogLevel(.none);
 
