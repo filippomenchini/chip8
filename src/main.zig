@@ -3,7 +3,7 @@ const rl = @import("raylib");
 const Chip8 = @import("chip_8.zig");
 
 const PIXEL_SCALE = 25;
-const CYCLES_PER_FRAME = 15;
+const CYCLES_PER_FRAME = 8;
 
 const KEY_MAPPING = [_]rl.KeyboardKey{
     rl.KeyboardKey.x, // 0
@@ -36,6 +36,11 @@ pub fn main() !void {
     rl.initWindow(window_width, window_height, "CHIP-8 Emulator");
     defer rl.closeWindow();
 
+    rl.initAudioDevice();
+    defer rl.closeAudioDevice();
+
+    var is_playing = false;
+
     rl.setTargetFPS(60);
     while (!rl.windowShouldClose()) {
         for (KEY_MAPPING, 0..) |raylib_key, chip8_key| {
@@ -53,6 +58,14 @@ pub fn main() !void {
                 }
                 break;
             };
+        }
+
+        if (chip8.sound_timer > 0 and !is_playing) {
+            const beep = try rl.loadSound("beep.wav");
+            rl.playSound(beep);
+            is_playing = true;
+        } else if (chip8.sound_timer == 0) {
+            is_playing = false;
         }
 
         chip8.updateTimers();

@@ -219,22 +219,26 @@ fn execute(self: *@This(), instruction: Instruction) ExecuteError!void {
                     self.registers[0xF] = result[1];
                 },
                 5 => {
-                    const result = @subWithOverflow(self.registers[data.vx], self.registers[data.vy]);
+                    const vx_original = self.registers[data.vx];
+                    const vy = self.registers[data.vy];
+                    const result = @subWithOverflow(vx_original, vy);
                     self.registers[data.vx] = result[0];
-                    self.registers[0xF] = if (self.registers[data.vx] > self.registers[data.vy]) 1 else 0;
+                    self.registers[0xF] = if (vx_original >= vy) 1 else 0;
                 },
                 6 => {
-                    self.registers[data.vx] >>= 1;
                     self.registers[0xF] = self.registers[data.vx] & 0x1;
+                    self.registers[data.vx] >>= 1;
                 },
                 7 => {
-                    const result = @subWithOverflow(self.registers[data.vy], self.registers[data.vx]);
+                    const vx = self.registers[data.vx];
+                    const vy = self.registers[data.vy];
+                    const result = @subWithOverflow(vy, vx);
                     self.registers[data.vx] = result[0];
-                    self.registers[0xF] = if (self.registers[data.vy] > self.registers[data.vx]) 1 else 0;
+                    self.registers[0xF] = if (vy >= vx) 1 else 0;
                 },
                 0xE => {
-                    self.registers[data.vx] <<= 1;
                     self.registers[0xF] = (self.registers[data.vx] & 0x80) >> 7;
+                    self.registers[data.vx] <<= 1;
                 },
                 else => return ExecuteError.InvalidSubOpcode,
             }
