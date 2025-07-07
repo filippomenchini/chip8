@@ -4,6 +4,25 @@ const Chip8 = @import("chip_8.zig");
 
 const PIXEL_SCALE = 25;
 
+const KEY_MAPPING = [_]rl.KeyboardKey{
+    rl.KeyboardKey.x, // 0
+    rl.KeyboardKey.one, // 1
+    rl.KeyboardKey.two, // 2
+    rl.KeyboardKey.three, // 3
+    rl.KeyboardKey.q, // 4
+    rl.KeyboardKey.w, // 5
+    rl.KeyboardKey.e, // 6
+    rl.KeyboardKey.a, // 7
+    rl.KeyboardKey.s, // 8
+    rl.KeyboardKey.d, // 9
+    rl.KeyboardKey.z, // A
+    rl.KeyboardKey.c, // B
+    rl.KeyboardKey.four, // C
+    rl.KeyboardKey.r, // D
+    rl.KeyboardKey.f, // E
+    rl.KeyboardKey.v, // F
+};
+
 pub fn main() !void {
     var chip8 = Chip8.init();
     try chip8.loadROM("./test_opcode.ch8");
@@ -18,6 +37,10 @@ pub fn main() !void {
 
     rl.setTargetFPS(60);
     while (!rl.windowShouldClose()) {
+        for (KEY_MAPPING, 0..) |raylib_key, chip8_key| {
+            chip8.keypad[chip8_key] = rl.isKeyDown(raylib_key);
+        }
+
         chip8.step() catch |err| {
             if (err == Chip8.DecodeError.InvalidInstruction) {
                 std.debug.print("Invalid instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });

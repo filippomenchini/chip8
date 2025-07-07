@@ -76,14 +76,6 @@ pub fn step(self: *@This()) !void {
     self.execute(instruction);
 }
 
-pub fn pressKey(self: *@This(), key: u5) void {
-    self.keypad[key] = true;
-}
-
-pub fn depressKey(self: *@This(), key: u5) void {
-    self.keypad[key] = false;
-}
-
 fn fetch(self: *@This()) u16 {
     const first_byte = @as(u16, self.memory[self.pc]);
     const second_byte = self.memory[self.pc + 1];
