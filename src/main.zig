@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const Chip8 = @import("chip_8.zig");
 
 const PIXEL_SCALE = 25;
+const CYCLES_PER_FRAME = 15;
 
 const KEY_MAPPING = [_]rl.KeyboardKey{
     rl.KeyboardKey.x, // 0
@@ -25,7 +26,7 @@ const KEY_MAPPING = [_]rl.KeyboardKey{
 
 pub fn main() !void {
     var chip8 = Chip8.init();
-    try chip8.loadROM("./test_opcode.ch8");
+    try chip8.loadROM("./breakout.ch8");
 
     rl.setTraceLogLevel(.none);
 
@@ -41,16 +42,20 @@ pub fn main() !void {
             chip8.keypad[chip8_key] = rl.isKeyDown(raylib_key);
         }
 
-        chip8.step() catch |err| {
-            if (err == Chip8.DecodeError.InvalidInstruction) {
-                std.debug.print("Invalid instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
-            } else if (err == Chip8.ExecuteError.InvalidSubOpcode) {
-                std.debug.print("Invalid sub opcode: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
-            } else {
-                std.debug.print("Error: {}\n", .{err});
-            }
-            break;
-        };
+        for (0..CYCLES_PER_FRAME) |_| {
+            chip8.step() catch |err| {
+                if (err == Chip8.DecodeError.InvalidInstruction) {
+                    std.debug.print("Invalid instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
+                } else if (err == Chip8.ExecuteError.InvalidSubOpcode) {
+                    std.debug.print("Invalid sub opcode: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
+                } else {
+                    std.debug.print("Error: {}\n", .{err});
+                }
+                break;
+            };
+        }
+
+        chip8.updateTimers();
 
         // Uncomment for debugging
         // std.debug.print("Running instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });

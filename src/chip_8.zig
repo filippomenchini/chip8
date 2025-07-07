@@ -34,6 +34,8 @@ registers: [16]u8,
 keypad: [16]bool,
 current_raw_instruction: u16,
 prng: std.Random.DefaultPrng,
+waiting_for_key: bool,
+waiting_key_register: u4,
 
 pub fn init() @This() {
     var chip_8 = @This(){
@@ -49,6 +51,8 @@ pub fn init() @This() {
         .keypad = [_]bool{false} ** 16,
         .current_raw_instruction = 0x0000,
         .prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp())),
+        .waiting_for_key = false,
+        .waiting_key_register = 0,
     };
 
     for (FONTSET, 0..) |font, i| {
@@ -74,6 +78,15 @@ pub fn step(self: *@This()) !void {
     const instruction_raw = self.fetch();
     const instruction = try self.decode(instruction_raw);
     try self.execute(instruction);
+}
+
+pub fn updateTimers(self: *@This()) void {
+    if (self.delay_timer > 0) {
+        self.delay_timer -= 1;
+    }
+    if (self.sound_timer > 0) {
+        self.sound_timer -= 1;
+    }
 }
 
 fn fetch(self: *@This()) u16 {
@@ -105,6 +118,8 @@ const Instruction = union(enum) {
     setI: u12,
     draw: struct { vx: u4, vy: u4, value: u4 },
     memory: struct { vx: u4, type: u8 },
+    skipIfKeyPressed: u4,
+    skipIfKeyNotPressed: u4,
 };
 
 pub const DecodeError = error{InvalidInstruction};
@@ -137,10 +152,14 @@ fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
         0xB => Instruction{ .jumpWithOffset = @truncate(nnn) },
         0xC => Instruction{ .random = .{ .vx = x, .value = @truncate(nn) } },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
-        0xF => Instruction{ .memory = .{ .vx = x, .type = @truncate(nn) } },
-        else => {
-            return DecodeError.InvalidInstruction;
+        0xE => {
+            return switch (nn) {
+                0x9E => Instruction{ .skipIfKeyPressed = x },
+                0xA1 => Instruction{ .skipIfKeyNotPressed = x },
+                else => DecodeError.InvalidInstruction,
+            };
         },
+        0xF => Instruction{ .memory = .{ .vx = x, .type = @truncate(nn) } },
     };
 }
 
@@ -271,12 +290,46 @@ fn execute(self: *@This(), instruction: Instruction) ExecuteError!void {
                 }
             }
         },
+        .skipIfKeyPressed => |register| {
+            const key = self.registers[register] & 0xF;
+            if (self.keypad[key]) {
+                self.pc += 2;
+            }
+        },
+        .skipIfKeyNotPressed => |register| {
+            const key = self.registers[register] & 0xF;
+            if (!self.keypad[key]) {
+                self.pc += 2;
+            }
+        },
         .memory => |data| {
             switch (data.type) {
                 0x07 => self.registers[data.vx] = self.delay_timer,
+                0x0A => {
+                    if (!self.waiting_for_key) {
+                        self.waiting_for_key = true;
+                        self.waiting_key_register = data.vx;
+                        self.pc -= 2;
+                    } else {
+                        for (self.keypad, 0..) |is_pressed, key| {
+                            if (is_pressed) {
+                                self.registers[self.waiting_key_register] = @intCast(key);
+                                self.waiting_for_key = false;
+                                break;
+                            }
+                        }
+                        if (self.waiting_for_key) {
+                            self.pc -= 2;
+                        }
+                    }
+                },
                 0x15 => self.delay_timer = self.registers[data.vx],
                 0x18 => self.sound_timer = self.registers[data.vx],
                 0x1E => self.i = @addWithOverflow(self.i, self.registers[data.vx])[0],
+                0x29 => {
+                    const hex_digit = self.registers[data.vx] & 0xF;
+                    self.i = 0x50 + (hex_digit * 5);
+                },
                 0x33 => {
                     const value = self.registers[data.vx];
 
