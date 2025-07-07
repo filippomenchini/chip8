@@ -73,7 +73,7 @@ pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HE
 pub fn step(self: *@This()) !void {
     const instruction_raw = self.fetch();
     const instruction = try self.decode(instruction_raw);
-    self.execute(instruction);
+    try self.execute(instruction);
 }
 
 fn fetch(self: *@This()) u16 {
@@ -104,6 +104,7 @@ const Instruction = union(enum) {
     addX: struct { register: u4, value: u8 },
     setI: u12,
     draw: struct { vx: u4, vy: u4, value: u4 },
+    memory: struct { vx: u4, type: u8 },
 };
 
 pub const DecodeError = error{InvalidInstruction};
@@ -136,6 +137,7 @@ fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
         0xB => Instruction{ .jumpWithOffset = @truncate(nnn) },
         0xC => Instruction{ .random = .{ .vx = x, .value = @truncate(nn) } },
         0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
+        0xF => Instruction{ .memory = .{ .vx = x, .type = @truncate(nn) } },
         else => {
             return DecodeError.InvalidInstruction;
         },
@@ -156,7 +158,8 @@ fn togglePixel(self: *@This(), x: u6, y: u5) void {
     self.display[index] = !self.display[index];
 }
 
-fn execute(self: *@This(), instruction: Instruction) void {
+pub const ExecuteError = error{InvalidSubOpcode};
+fn execute(self: *@This(), instruction: Instruction) ExecuteError!void {
     switch (instruction) {
         .clearScreen => self.clearDisplay(),
         .jump => |address| {
@@ -214,7 +217,7 @@ fn execute(self: *@This(), instruction: Instruction) void {
                     self.registers[data.vx] <<= 1;
                     self.registers[0xF] = (self.registers[data.vx] & 0x80) >> 7;
                 },
-                else => unreachable,
+                else => return ExecuteError.InvalidSubOpcode,
             }
         },
         .skipIfXNotEqualsY => |data| {
@@ -266,6 +269,36 @@ fn execute(self: *@This(), instruction: Instruction) void {
                         }
                     }
                 }
+            }
+        },
+        .memory => |data| {
+            switch (data.type) {
+                0x07 => self.registers[data.vx] = self.delay_timer,
+                0x15 => self.delay_timer = self.registers[data.vx],
+                0x18 => self.sound_timer = self.registers[data.vx],
+                0x1E => self.i = @addWithOverflow(self.i, self.registers[data.vx])[0],
+                0x33 => {
+                    const value = self.registers[data.vx];
+
+                    const hundreds = value / 100;
+                    const tens = (value / 10) % 10;
+                    const units = value % 10;
+
+                    self.memory[self.i] = hundreds;
+                    self.memory[self.i + 1] = tens;
+                    self.memory[self.i + 2] = units;
+                },
+                0x55 => {
+                    for (0..data.vx + 1) |i| {
+                        self.memory[self.i + i] = self.registers[i];
+                    }
+                },
+                0x65 => {
+                    for (0..data.vx + 1) |i| {
+                        self.registers[i] = self.memory[self.i + i];
+                    }
+                },
+                else => return ExecuteError.InvalidSubOpcode,
             }
         },
     }

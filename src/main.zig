@@ -44,6 +44,8 @@ pub fn main() !void {
         chip8.step() catch |err| {
             if (err == Chip8.DecodeError.InvalidInstruction) {
                 std.debug.print("Invalid instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
+            } else if (err == Chip8.ExecuteError.InvalidSubOpcode) {
+                std.debug.print("Invalid sub opcode: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
             } else {
                 std.debug.print("Error: {}\n", .{err});
             }
