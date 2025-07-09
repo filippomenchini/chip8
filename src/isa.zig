@@ -116,9 +116,8 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                         @truncate(current_y),
                     );
 
-                    if (screen_pixel_was_on) {
-                        cpu.registers[0xF] = 1;
-                    }
+                    if (!screen_pixel_was_on) continue;
+                    cpu.registers[0xF] = 1;
                 }
             }
         },
