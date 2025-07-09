@@ -104,20 +104,20 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                     const current_x = x + j;
 
                     if (pixel_bit == 0) continue;
-                    if (current_x < Output.DISPLAY_WIDTH and current_y < Output.DISPLAY_HEIGHT) {
-                        const screen_pixel_was_on = output.getPixel(
-                            @truncate(current_x),
-                            @truncate(current_y),
-                        );
+                    if (current_x > Output.DISPLAY_WIDTH or current_y > Output.DISPLAY_HEIGHT) continue;
 
-                        output.togglePixel(
-                            @truncate(current_x),
-                            @truncate(current_y),
-                        );
+                    const screen_pixel_was_on = output.getPixel(
+                        @truncate(current_x),
+                        @truncate(current_y),
+                    );
 
-                        if (screen_pixel_was_on) {
-                            cpu.registers[0xF] = 1;
-                        }
+                    output.togglePixel(
+                        @truncate(current_x),
+                        @truncate(current_y),
+                    );
+
+                    if (screen_pixel_was_on) {
+                        cpu.registers[0xF] = 1;
                     }
                 }
             }
