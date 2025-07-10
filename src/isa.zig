@@ -5,8 +5,6 @@ const Output = @import("output.zig");
 const Timer = @import("timer.zig");
 const RNG = @import("rng.zig");
 
-const rng = RNG.init();
-
 pub const Instruction = struct {
     op_code: u4,
     vx: u4,
@@ -28,14 +26,23 @@ pub fn decode(raw: u16) Instruction {
 }
 
 pub const IsaExecutionError = error{ InvalidOpCode, InvalidSubOpCode };
-pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Input, output: *Output, delay_timer: *Timer, sound_timer: *Timer) IsaExecutionError!void {
+pub fn execute(
+    instruction: Instruction,
+    cpu: *CPU,
+    memory: *Memory,
+    input: *Input,
+    output: *Output,
+    delay_timer: *Timer,
+    sound_timer: *Timer,
+    rng: *RNG,
+) IsaExecutionError!void {
     switch (instruction.op_code) {
         0x0 => switch (instruction.nnn) {
             0x0E0 => output.clearDisplay(),
             0x0EE => cpu.ret(),
         },
         0x1 => cpu.jump(instruction.nnn),
-        0x2 => cpu.ret(),
+        0x2 => cpu.call(instruction.nnn),
         0x3 => if (cpu.regs[instruction.vx] == instruction.nn) {
             cpu.pc += 2;
         },
@@ -118,7 +125,7 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                     );
 
                     if (!screen_pixel_was_on) continue;
-                    cpu.registers[0xF] = 1;
+                    cpu.regs[0xF] = 1;
                 }
             }
         },
@@ -126,13 +133,13 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
             0x9E => {
                 const key = cpu.regs[instruction.vx] & 0xF;
                 if (input.getKey(key)) {
-                    cpu.jump(cpu.pc + 2);
+                    cpu.pc += 2;
                 }
             },
             0xA1 => {
                 const key = cpu.regs[instruction.vx] & 0xF;
-                if (input.getKey(key)) {
-                    cpu.jump(cpu.pc + 2);
+                if (!input.getKey(key)) {
+                    cpu.pc += 2;
                 }
             },
             else => return IsaExecutionError.InvalidSubOpCode,
@@ -142,7 +149,7 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
             0x0A => {
                 if (!cpu.state == .waiting) {
                     cpu.state = .{ .waiting = instruction.vx };
-                    cpu.jump(cpu.pc - 2);
+                    cpu.pc -= 2;
                     return;
                 }
 
@@ -155,10 +162,10 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                 }
 
                 if (!cpu.state == .waiting) return;
-                cpu.jump(cpu.pc - 2);
+                cpu.pc -= 2;
             },
-            0x15 => delay_timer = cpu.regs[instruction.vx],
-            0x18 => sound_timer = cpu.regs[instruction.vx],
+            0x15 => delay_timer.set(cpu.regs[instruction.vx]),
+            0x18 => sound_timer.set(cpu.regs[instruction.vx]),
             0x1E => cpu.i +%= cpu.regs[instruction.vx],
             0x29 => {
                 const hex_digit = cpu.regs[instruction.vx] & 0xF;
