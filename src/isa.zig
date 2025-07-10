@@ -40,6 +40,7 @@ pub fn execute(
         0x0 => switch (instruction.nnn) {
             0x0E0 => output.clearDisplay(),
             0x0EE => cpu.ret(),
+            else => return IsaExecutionError.InvalidSubOpCode,
         },
         0x1 => cpu.jump(instruction.nnn),
         0x2 => cpu.call(instruction.nnn),
@@ -105,7 +106,7 @@ pub fn execute(
 
             for (0..instruction.n) |i| {
                 const current_y = y + i;
-                const sprite = memory.read(cpu.i + i);
+                const sprite = memory.read(@truncate(cpu.i + i));
 
                 for (0..8) |j| {
                     const pixel_bit = (sprite >> (7 - @as(u3, @intCast(j)))) & 1;
@@ -132,13 +133,13 @@ pub fn execute(
         0xE => switch (instruction.nn) {
             0x9E => {
                 const key = cpu.regs[instruction.vx] & 0xF;
-                if (input.getKey(key)) {
+                if (input.getKey(@truncate(key))) {
                     cpu.pc += 2;
                 }
             },
             0xA1 => {
                 const key = cpu.regs[instruction.vx] & 0xF;
-                if (!input.getKey(key)) {
+                if (!input.getKey(@truncate(key))) {
                     cpu.pc += 2;
                 }
             },
@@ -147,7 +148,7 @@ pub fn execute(
         0xF => switch (instruction.nn) {
             0x07 => cpu.regs[instruction.vx] = delay_timer.get(),
             0x0A => {
-                if (!cpu.state == .waiting) {
+                if (cpu.state != .waiting) {
                     cpu.state = .{ .waiting = instruction.vx };
                     cpu.pc -= 2;
                     return;
@@ -161,7 +162,7 @@ pub fn execute(
                     break;
                 }
 
-                if (!cpu.state == .waiting) return;
+                if (cpu.state != .waiting) return;
                 cpu.pc -= 2;
             },
             0x15 => delay_timer.set(cpu.regs[instruction.vx]),
@@ -184,16 +185,15 @@ pub fn execute(
             },
             0x55 => {
                 for (0..instruction.vx + 1) |i| {
-                    memory.write(cpu.i + i, cpu.regs[i]);
+                    memory.write(@truncate(cpu.i + i), cpu.regs[i]);
                 }
             },
             0x65 => {
                 for (0..instruction.vx + 1) |i| {
-                    cpu.regs[i] = memory.read(cpu.i + i);
+                    cpu.regs[i] = memory.read(@truncate(cpu.i + i));
                 }
             },
             else => return IsaExecutionError.InvalidSubOpCode,
         },
-        else => return IsaExecutionError.InvalidOpCode,
     }
 }

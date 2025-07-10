@@ -13,7 +13,7 @@ pub fn update(self: *Timer) void {
     self.timer -= 1;
 }
 
-pub fn get(self: *Timer) u8 {
+pub fn get(self: *const Timer) u8 {
     return self.timer;
 }
 

@@ -3,7 +3,6 @@ const rl = @import("raylib");
 const Chip8 = @import("chip_8.zig");
 
 const PIXEL_SCALE = 25;
-const CYCLES_PER_FRAME = 8;
 
 const KEY_MAPPING = [_]rl.KeyboardKey{
     rl.KeyboardKey.x, // 0
@@ -26,7 +25,7 @@ const KEY_MAPPING = [_]rl.KeyboardKey{
 
 pub fn main() !void {
     var chip8 = Chip8.init();
-    try chip8.loadROM("./test_opcode.ch8");
+    try chip8.loadROM("./breakout.ch8");
 
     rl.setTraceLogLevel(.none);
 
@@ -39,60 +38,69 @@ pub fn main() !void {
     rl.initAudioDevice();
     defer rl.closeAudioDevice();
 
+    var beep_sound: ?rl.Sound = null;
     var is_playing = false;
 
     rl.setTargetFPS(60);
+
     while (!rl.windowShouldClose()) {
-        for (KEY_MAPPING, 0..) |raylib_key, chip8_key| {
-            chip8.keypad[chip8_key] = rl.isKeyDown(raylib_key);
-        }
+        updateInput(&chip8);
 
-        for (0..CYCLES_PER_FRAME) |_| {
-            chip8.step() catch |err| {
-                if (err == Chip8.DecodeError.InvalidInstruction) {
-                    std.debug.print("Invalid instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
-                } else if (err == Chip8.ExecuteError.InvalidSubOpcode) {
-                    std.debug.print("Invalid sub opcode: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
-                } else {
-                    std.debug.print("Error: {}\n", .{err});
-                }
-                break;
-            };
-        }
+        chip8.step() catch |err| {
+            std.debug.print("Emulator error: {}\n", .{err});
+            break;
+        };
 
-        if (chip8.sound_timer > 0 and !is_playing) {
-            const beep = try rl.loadSound("beep.wav");
-            rl.playSound(beep);
+        if (chip8.isBeeping() and !is_playing) {
+            if (beep_sound == null) {
+                beep_sound = rl.loadSound("beep.wav") catch |err| {
+                    std.debug.print("Could not load beep.wav: {}\n", .{err});
+                    continue;
+                };
+            }
+            if (beep_sound) |sound| {
+                rl.playSound(sound);
+            }
             is_playing = true;
-        } else if (chip8.sound_timer == 0) {
+        } else if (!chip8.isBeeping()) {
             is_playing = false;
         }
 
-        chip8.updateTimers();
+        renderFrame(&chip8);
+    }
 
-        // Uncomment for debugging
-        // std.debug.print("Running instruction: 0x{X} at PC: 0x{X}\n", .{ chip8.current_raw_instruction, chip8.pc });
+    if (beep_sound) |sound| {
+        rl.unloadSound(sound);
+    }
+}
 
-        rl.beginDrawing();
-        rl.clearBackground(.black);
+fn updateInput(chip8: *Chip8) void {
+    for (KEY_MAPPING, 0..) |raylib_key, chip8_key| {
+        const pressed = rl.isKeyDown(raylib_key);
+        chip8.setKey(@intCast(chip8_key), pressed);
+    }
+}
 
-        const buffer = chip8.getDisplayBuffer();
+fn renderFrame(chip8: *Chip8) void {
+    rl.beginDrawing();
+    defer rl.endDrawing();
 
-        for (0..Chip8.DISPLAY_HEIGHT) |y| {
-            for (0..Chip8.DISPLAY_WIDTH) |x| {
-                const pixel_index = y * Chip8.DISPLAY_WIDTH + x;
-                if (buffer[pixel_index]) {
-                    rl.drawRectangle(
-                        @intCast(x * PIXEL_SCALE),
-                        @intCast(y * PIXEL_SCALE),
-                        PIXEL_SCALE,
-                        PIXEL_SCALE,
-                        .white,
-                    );
-                }
+    rl.clearBackground(.black);
+
+    const buffer = chip8.getDisplayBuffer();
+
+    for (0..Chip8.DISPLAY_HEIGHT) |y| {
+        for (0..Chip8.DISPLAY_WIDTH) |x| {
+            const pixel_index = y * Chip8.DISPLAY_WIDTH + x;
+            if (buffer[pixel_index]) {
+                rl.drawRectangle(
+                    @intCast(x * PIXEL_SCALE),
+                    @intCast(y * PIXEL_SCALE),
+                    PIXEL_SCALE,
+                    PIXEL_SCALE,
+                    .white,
+                );
             }
         }
-
-        rl.endDrawing();
     }
 }

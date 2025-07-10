@@ -19,14 +19,14 @@ pub fn init() CPU {
         .i = 0,
         .stack = [_]u16{0} ** 16,
         .sp = 0,
-        .registers = [_]u8{0} ** 16,
+        .regs = [_]u8{0} ** 16,
         .state = .running,
     };
 }
 
-pub fn fetch(self: *CPU, memory: *Memory) u16 {
-    const first_byte = @as(u16, memory[self.pc]);
-    const second_byte = memory[self.pc + 1];
+pub fn fetch(self: *CPU, memory: *const Memory) u16 {
+    const first_byte = @as(u16, memory.read(self.pc));
+    const second_byte = memory.read(self.pc + 1);
     self.pc += 2;
 
     return (first_byte << 8) | second_byte;

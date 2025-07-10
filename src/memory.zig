@@ -33,7 +33,7 @@ pub fn init() Memory {
     };
 }
 
-pub fn read(self: *Memory, address: u16) u8 {
+pub fn read(self: *const Memory, address: u16) u8 {
     return self.ram[address];
 }
 

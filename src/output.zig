@@ -10,17 +10,17 @@ pub fn init() Output {
     };
 }
 
-pub fn getPixel(self: *@This(), x: u6, y: u5) bool {
+pub fn getPixel(self: *const Output, x: u6, y: u5) bool {
     const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
     return self.display[index];
 }
 
-pub fn togglePixel(self: *@This(), x: u6, y: u5) void {
+pub fn togglePixel(self: *Output, x: u6, y: u5) void {
     const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
     self.display[index] = !self.display[index];
 }
 
-pub fn getDisplayBuffer(self: *Output) *[DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
+pub fn getDisplayBuffer(self: *const Output) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
     return &self.display;
 }
 

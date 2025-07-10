@@ -1,364 +1,100 @@
 const std = @import("std");
 
-pub const DISPLAY_WIDTH = 64;
-pub const DISPLAY_HEIGHT = 32;
+const CPU = @import("cpu.zig");
+const Memory = @import("memory.zig");
+const Output = @import("output.zig");
+const Input = @import("input.zig");
+const Timer = @import("timer.zig");
+const RNG = @import("rng.zig");
+const Clock = @import("clock.zig");
+const ISA = @import("isa.zig");
 
-const FONTSET = [_]u8{
-    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-    0x20, 0x60, 0x20, 0x20, 0x70, // 1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
-};
+const CPU_CLOCK_HZ = 600;
+const TIMER_CLOCK_HZ = 60;
 
-memory: [4096]u8,
-display: [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool,
-pc: u16,
-i: u16,
-stack: [16]u16,
-sp: u8,
-delay_timer: u8,
-sound_timer: u8,
-registers: [16]u8,
-keypad: [16]bool,
+pub const DISPLAY_WIDTH = Output.DISPLAY_WIDTH;
+pub const DISPLAY_HEIGHT = Output.DISPLAY_HEIGHT;
+
+const Chip8 = @This();
+cpu: CPU,
+memory: Memory,
+output: Output,
+input: Input,
+delay_timer: Timer,
+sound_timer: Timer,
+rng: RNG,
+cpu_clock: Clock,
+timer_clock: Clock,
 current_raw_instruction: u16,
-prng: std.Random.DefaultPrng,
-waiting_for_key: bool,
-waiting_key_register: u4,
 
-pub fn init() @This() {
-    var chip_8 = @This(){
-        .memory = [_]u8{0} ** 4096,
-        .display = [_]bool{false} ** (DISPLAY_WIDTH * DISPLAY_HEIGHT),
-        .pc = 0x200,
-        .i = 0,
-        .stack = [_]u16{0} ** 16,
-        .sp = 0,
-        .delay_timer = 0,
-        .sound_timer = 0,
-        .registers = [_]u8{0} ** 16,
-        .keypad = [_]bool{false} ** 16,
-        .current_raw_instruction = 0x0000,
-        .prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp())),
-        .waiting_for_key = false,
-        .waiting_key_register = 0,
+pub fn init() Chip8 {
+    return .{
+        .cpu = CPU.init(),
+        .memory = Memory.init(),
+        .output = Output.init(),
+        .input = Input.init(),
+        .delay_timer = Timer.init(),
+        .sound_timer = Timer.init(),
+        .rng = RNG.init(),
+        .cpu_clock = Clock.init(CPU_CLOCK_HZ),
+        .timer_clock = Clock.init(TIMER_CLOCK_HZ),
+        .current_raw_instruction = 0x0,
     };
-
-    for (FONTSET, 0..) |font, i| {
-        chip_8.memory[0x50 + i] = font;
-    }
-
-    return chip_8;
 }
 
-pub fn loadROM(self: *@This(), path: []const u8) !void {
-    var file = try std.fs.cwd().openFile(path, .{});
+pub fn loadROM(self: *Chip8, path: []const u8) !void {
+    const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
+
+    const file_size = try file.getEndPos();
+    if (file_size > 2000) {
+        return error.ROMTooLarge;
+    }
+
     var buffer: [2000]u8 = undefined;
-    _ = try file.readAll(&buffer);
-    @memcpy(self.memory[512..2512], &buffer);
-}
+    const bytes_read = try file.readAll(&buffer);
 
-pub fn getDisplayBuffer(self: *const @This()) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
-    return &self.display;
-}
-
-pub fn step(self: *@This()) !void {
-    const instruction_raw = self.fetch();
-    const instruction = try self.decode(instruction_raw);
-    try self.execute(instruction);
-}
-
-pub fn updateTimers(self: *@This()) void {
-    if (self.delay_timer > 0) {
-        self.delay_timer -= 1;
-    }
-    if (self.sound_timer > 0) {
-        self.sound_timer -= 1;
+    for (0..bytes_read) |i| {
+        self.memory.write(0x200 + @as(u16, @intCast(i)), buffer[i]);
     }
 }
 
-fn fetch(self: *@This()) u16 {
-    const first_byte = @as(u16, self.memory[self.pc]);
-    const second_byte = self.memory[self.pc + 1];
+pub fn step(self: *Chip8) !void {
+    if (self.cpu_clock.shouldTick()) {
+        const raw_instruction = self.cpu.fetch(&self.memory);
+        self.current_raw_instruction = raw_instruction;
 
-    return (first_byte << 8) | second_byte;
-}
-
-fn getNibble(raw: u16, position: u2) u4 {
-    const shift = @as(u4, 3 - position) * 4;
-    return @truncate((raw >> shift) & 0xF);
-}
-
-const Instruction = union(enum) {
-    clearScreen,
-    returnFromSubroutine,
-    skipIfXEqualsNN: struct { vx: u4, value: u8 },
-    skipIfXNotEqualsNN: struct { vx: u4, value: u8 },
-    skipIfXEqualsY: struct { vx: u4, vy: u4 },
-    logicAndMath: struct { vx: u4, vy: u4, type: u4 },
-    skipIfXNotEqualsY: struct { vx: u4, vy: u4 },
-    jumpWithOffset: u12,
-    random: struct { vx: u4, value: u8 },
-    call: u12,
-    jump: u12,
-    setX: struct { register: u4, value: u8 },
-    addX: struct { register: u4, value: u8 },
-    setI: u12,
-    draw: struct { vx: u4, vy: u4, value: u4 },
-    memory: struct { vx: u4, type: u8 },
-    skipIfKeyPressed: u4,
-    skipIfKeyNotPressed: u4,
-};
-
-pub const DecodeError = error{InvalidInstruction};
-fn decode(self: *@This(), raw: u16) DecodeError!Instruction {
-    self.current_raw_instruction = raw;
-
-    const op_code = getNibble(raw, 0);
-    const x = getNibble(raw, 1);
-    const y = getNibble(raw, 2);
-    const n = getNibble(raw, 3);
-    const nn = raw & 0x00FF;
-    const nnn = raw & 0x0FFF;
-
-    return switch (op_code) {
-        0x0 => {
-            if (raw == 0x00E0) return Instruction.clearScreen;
-            if (raw == 0x00EE) return Instruction.returnFromSubroutine;
-            unreachable;
-        },
-        0x1 => Instruction{ .jump = @truncate(nnn) },
-        0x3 => Instruction{ .skipIfXEqualsNN = .{ .vx = x, .value = @truncate(nn) } },
-        0x4 => Instruction{ .skipIfXNotEqualsNN = .{ .vx = x, .value = @truncate(nn) } },
-        0x5 => Instruction{ .skipIfXEqualsY = .{ .vx = x, .vy = y } },
-        0x2 => Instruction{ .call = @truncate(nnn) },
-        0x6 => Instruction{ .setX = .{ .register = x, .value = @truncate(nn) } },
-        0x7 => Instruction{ .addX = .{ .register = x, .value = @truncate(nn) } },
-        0x8 => Instruction{ .logicAndMath = .{ .vx = x, .vy = y, .type = n } },
-        0x9 => Instruction{ .skipIfXNotEqualsY = .{ .vx = x, .vy = y } },
-        0xA => Instruction{ .setI = @truncate(nnn) },
-        0xB => Instruction{ .jumpWithOffset = @truncate(nnn) },
-        0xC => Instruction{ .random = .{ .vx = x, .value = @truncate(nn) } },
-        0xD => Instruction{ .draw = .{ .vx = x, .vy = y, .value = n } },
-        0xE => {
-            return switch (nn) {
-                0x9E => Instruction{ .skipIfKeyPressed = x },
-                0xA1 => Instruction{ .skipIfKeyNotPressed = x },
-                else => DecodeError.InvalidInstruction,
-            };
-        },
-        0xF => Instruction{ .memory = .{ .vx = x, .type = @truncate(nn) } },
-    };
-}
-
-fn clearDisplay(self: *@This()) void {
-    self.display = [_]bool{false} ** (DISPLAY_WIDTH * DISPLAY_HEIGHT);
-}
-
-fn getPixel(self: *@This(), x: u6, y: u5) bool {
-    const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
-    return self.display[index];
-}
-
-fn togglePixel(self: *@This(), x: u6, y: u5) void {
-    const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
-    self.display[index] = !self.display[index];
-}
-
-pub const ExecuteError = error{InvalidSubOpcode};
-fn execute(self: *@This(), instruction: Instruction) ExecuteError!void {
-    switch (instruction) {
-        .clearScreen => self.clearDisplay(),
-        .jump => |address| {
-            self.pc = address;
-            return;
-        },
-        .call => |address| {
-            self.stack[self.sp] = self.pc + 2;
-            self.sp += 1;
-            self.pc = address;
-            return;
-        },
-        .returnFromSubroutine => {
-            self.sp -= 1;
-            self.pc = self.stack[self.sp];
-            return;
-        },
-        .skipIfXEqualsNN => |data| {
-            if (self.registers[data.vx] == data.value) {
-                self.pc += 2;
-            }
-        },
-        .skipIfXNotEqualsNN => |data| {
-            if (self.registers[data.vx] != data.value) self.pc += 2;
-        },
-        .skipIfXEqualsY => |data| {
-            if (self.registers[data.vx] == self.registers[data.vy]) self.pc += 2;
-        },
-        .logicAndMath => |data| {
-            switch (data.type) {
-                0 => self.registers[data.vx] = self.registers[data.vy],
-                1 => self.registers[data.vx] = self.registers[data.vx] | self.registers[data.vy],
-                2 => self.registers[data.vx] = self.registers[data.vx] & self.registers[data.vy],
-                3 => self.registers[data.vx] = self.registers[data.vx] ^ self.registers[data.vy],
-                4 => {
-                    const result = @addWithOverflow(self.registers[data.vx], self.registers[data.vy]);
-                    self.registers[data.vx] = result[0];
-                    self.registers[0xF] = result[1];
-                },
-                5 => {
-                    const vx_original = self.registers[data.vx];
-                    const vy = self.registers[data.vy];
-                    const result = @subWithOverflow(vx_original, vy);
-                    self.registers[data.vx] = result[0];
-                    self.registers[0xF] = if (vx_original >= vy) 1 else 0;
-                },
-                6 => {
-                    self.registers[0xF] = self.registers[data.vx] & 0x1;
-                    self.registers[data.vx] >>= 1;
-                },
-                7 => {
-                    const vx = self.registers[data.vx];
-                    const vy = self.registers[data.vy];
-                    const result = @subWithOverflow(vy, vx);
-                    self.registers[data.vx] = result[0];
-                    self.registers[0xF] = if (vy >= vx) 1 else 0;
-                },
-                0xE => {
-                    self.registers[0xF] = (self.registers[data.vx] & 0x80) >> 7;
-                    self.registers[data.vx] <<= 1;
-                },
-                else => return ExecuteError.InvalidSubOpcode,
-            }
-        },
-        .skipIfXNotEqualsY => |data| {
-            if (self.registers[data.vx] != self.registers[data.vy]) self.pc += 2;
-        },
-        .addX => |data| {
-            const result = @addWithOverflow(self.registers[data.register], data.value);
-            self.registers[data.register] = result[0];
-        },
-        .setI => |i| self.i = i,
-        .jumpWithOffset => |address| {
-            self.pc = address + self.registers[0x0];
-            return;
-        },
-        .random => |data| {
-            const random_value = self.prng.random().int(u8);
-            self.registers[data.vx] = random_value & data.value;
-        },
-        .setX => |data| self.registers[data.register] = data.value,
-        .draw => |data| {
-            const x = self.registers[data.vx] & (DISPLAY_WIDTH - 1);
-            const y = self.registers[data.vy] & (DISPLAY_HEIGHT - 1);
-
-            self.registers[0xF] = 0;
-
-            for (0..data.value) |i| {
-                const current_y = y + i;
-                const sprite = self.memory[self.i + i];
-
-                for (0..8) |j| {
-                    const pixel_bit = (sprite >> (7 - @as(u3, @intCast(j)))) & 1;
-                    const current_x = x + j;
-
-                    if (pixel_bit != 0) {
-                        if (current_x < DISPLAY_WIDTH and current_y < DISPLAY_HEIGHT) {
-                            const screen_pixel_was_on = self.getPixel(
-                                @truncate(current_x),
-                                @truncate(current_y),
-                            );
-
-                            self.togglePixel(
-                                @truncate(current_x),
-                                @truncate(current_y),
-                            );
-
-                            if (screen_pixel_was_on) {
-                                self.registers[0xF] = 1;
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        .skipIfKeyPressed => |register| {
-            const key = self.registers[register] & 0xF;
-            if (self.keypad[key]) {
-                self.pc += 2;
-            }
-        },
-        .skipIfKeyNotPressed => |register| {
-            const key = self.registers[register] & 0xF;
-            if (!self.keypad[key]) {
-                self.pc += 2;
-            }
-        },
-        .memory => |data| {
-            switch (data.type) {
-                0x07 => self.registers[data.vx] = self.delay_timer,
-                0x0A => {
-                    if (!self.waiting_for_key) {
-                        self.waiting_for_key = true;
-                        self.waiting_key_register = data.vx;
-                        self.pc -= 2;
-                    } else {
-                        for (self.keypad, 0..) |is_pressed, key| {
-                            if (is_pressed) {
-                                self.registers[self.waiting_key_register] = @intCast(key);
-                                self.waiting_for_key = false;
-                                break;
-                            }
-                        }
-                        if (self.waiting_for_key) {
-                            self.pc -= 2;
-                        }
-                    }
-                },
-                0x15 => self.delay_timer = self.registers[data.vx],
-                0x18 => self.sound_timer = self.registers[data.vx],
-                0x1E => self.i = @addWithOverflow(self.i, self.registers[data.vx])[0],
-                0x29 => {
-                    const hex_digit = self.registers[data.vx] & 0xF;
-                    self.i = 0x50 + (hex_digit * 5);
-                },
-                0x33 => {
-                    const value = self.registers[data.vx];
-
-                    const hundreds = value / 100;
-                    const tens = (value / 10) % 10;
-                    const units = value % 10;
-
-                    self.memory[self.i] = hundreds;
-                    self.memory[self.i + 1] = tens;
-                    self.memory[self.i + 2] = units;
-                },
-                0x55 => {
-                    for (0..data.vx + 1) |i| {
-                        self.memory[self.i + i] = self.registers[i];
-                    }
-                },
-                0x65 => {
-                    for (0..data.vx + 1) |i| {
-                        self.registers[i] = self.memory[self.i + i];
-                    }
-                },
-                else => return ExecuteError.InvalidSubOpcode,
-            }
-        },
+        const instruction = ISA.decode(raw_instruction);
+        try ISA.execute(
+            instruction,
+            &self.cpu,
+            &self.memory,
+            &self.input,
+            &self.output,
+            &self.delay_timer,
+            &self.sound_timer,
+            &self.rng,
+        );
     }
 
-    self.pc += 2;
+    if (self.timer_clock.shouldTick()) {
+        self.delay_timer.update();
+        self.sound_timer.update();
+    }
+}
+
+pub fn getDisplayBuffer(self: *const Chip8) *const [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool {
+    return self.output.getDisplayBuffer();
+}
+
+pub fn isBeeping(self: *const Chip8) bool {
+    return self.sound_timer.get() > 0;
+}
+
+pub fn setKey(self: *Chip8, key: u4, pressed: bool) void {
+    self.input.setKey(key, pressed);
+}
+
+pub fn getKey(self: *const Chip8, key: u4) bool {
+    return self.input.getKey(key);
 }

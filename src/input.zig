@@ -8,7 +8,7 @@ pub fn init() Input {
     };
 }
 
-pub fn getKey(self: *Input, key: u4) bool {
+pub fn getKey(self: *const Input, key: u4) bool {
     return self.keypad[key];
 }
 
