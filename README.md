@@ -25,7 +25,7 @@ The CHIP-8 keypad is mapped to QWERTY keys as shown above.
 
 ## To do
 - [X] Basic CHIP-8 emulator
-- [ ] Divide code into modules (CPU, Memory, Display, Instructions, Clock, etc...)
+- [X] Divide code into modules (CPU, Memory, Display, Instructions, Clock, etc...)
 - [ ] Add a debugger (it should output the state of every module and give the ability to step through every instruction)
 - [ ] Add SUPER-CHIP support
 - [ ] Add XO-CHIP support
