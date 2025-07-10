@@ -1,6 +1,8 @@
 const std = @import("std");
 const rl = @import("raylib");
+
 const Chip8 = @import("chip_8.zig");
+const Debugger = @import("debugger.zig");
 
 const PIXEL_SCALE = 25;
 
@@ -24,8 +26,10 @@ const KEY_MAPPING = [_]rl.KeyboardKey{
 };
 
 pub fn main() !void {
-    var chip8 = Chip8.init();
-    try chip8.loadROM("./breakout.ch8");
+    var chip_8 = Chip8.init();
+    try chip_8.loadROM("./breakout.ch8");
+
+    const debugger = Debugger.init(&chip_8);
 
     rl.setTraceLogLevel(.none);
 
@@ -44,14 +48,16 @@ pub fn main() !void {
     rl.setTargetFPS(60);
 
     while (!rl.windowShouldClose()) {
-        updateInput(&chip8);
+        updateInput(&chip_8);
 
-        chip8.step() catch |err| {
+        chip_8.step() catch |err| {
             std.debug.print("Emulator error: {}\n", .{err});
             break;
         };
 
-        if (chip8.isBeeping() and !is_playing) {
+        std.debug.print("{X}\n", .{debugger.getCpuInfo().pc.*});
+
+        if (chip_8.isBeeping() and !is_playing) {
             if (beep_sound == null) {
                 beep_sound = rl.loadSound("beep.wav") catch |err| {
                     std.debug.print("Could not load beep.wav: {}\n", .{err});
@@ -62,11 +68,11 @@ pub fn main() !void {
                 rl.playSound(sound);
             }
             is_playing = true;
-        } else if (!chip8.isBeeping()) {
+        } else if (!chip_8.isBeeping()) {
             is_playing = false;
         }
 
-        renderFrame(&chip8);
+        renderFrame(&chip_8);
     }
 
     if (beep_sound) |sound| {
