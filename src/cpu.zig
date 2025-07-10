@@ -14,6 +14,17 @@ regs: [16]u8,
 stack: [16]u16,
 state: State,
 
+pub fn init() CPU {
+    return .{
+        .pc = 0x200,
+        .i = 0,
+        .stack = [_]u16{0} ** 16,
+        .sp = 0,
+        .registers = [_]u8{0} ** 16,
+        .state = .idle,
+    };
+}
+
 pub fn fetch(self: *CPU, memory: *Memory) u16 {
     const first_byte = @as(u16, memory[self.pc]);
     const second_byte = memory[self.pc + 1];

@@ -2,6 +2,12 @@ const Input = @This();
 
 keypad: [16]bool,
 
+pub fn init() Input {
+    return .{
+        .keypad = [_]bool{false} ** 16,
+    };
+}
+
 pub fn getKey(self: *Input, key: u4) bool {
     return self.keypad[key];
 }

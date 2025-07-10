@@ -4,6 +4,12 @@ pub const DISPLAY_HEIGHT = 32;
 const Output = @This();
 display: [DISPLAY_WIDTH * DISPLAY_HEIGHT]bool,
 
+pub fn init() Output {
+    return .{
+        .display = [_]bool{false} ** (DISPLAY_WIDTH * DISPLAY_HEIGHT),
+    };
+}
+
 pub fn getPixel(self: *@This(), x: u6, y: u5) bool {
     const index: u16 = @as(u16, y) * DISPLAY_WIDTH + x;
     return self.display[index];
