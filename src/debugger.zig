@@ -1,6 +1,9 @@
+const std = @import("std");
+
 const Chip8 = @import("chip_8.zig");
 const CPU = @import("cpu.zig");
 const Memory = @import("memory.zig");
+const Input = @import("input.zig");
 
 pub const CPUInfo = struct {
     pc: *const u16,
@@ -20,33 +23,37 @@ pub const InputInfo = struct {
 };
 
 const Debugger = @This();
-chip_8: *const Chip8,
+cpu_info: ?CPUInfo,
+memory_info: ?MemoryInfo,
+input_info: ?InputInfo,
 
-pub fn init(chip_8: *Chip8) Debugger {
+pub fn init() Debugger {
     return .{
-        .chip_8 = chip_8,
+        .cpu_info = null,
+        .memory_info = null,
+        .input_info = null,
     };
 }
 
-pub fn getCpuInfo(self: *const Debugger) CPUInfo {
-    return .{
-        .pc = &self.chip_8.cpu.pc,
-        .sp = &self.chip_8.cpu.sp,
-        .i = &self.chip_8.cpu.i,
-        .regs = &self.chip_8.cpu.regs,
-        .stack = &self.chip_8.cpu.stack,
-        .state = &self.chip_8.cpu.state,
+pub fn setCpuInfo(self: *Debugger, cpu: *const CPU) void {
+    self.cpu_info = CPUInfo{
+        .pc = &cpu.pc,
+        .sp = &cpu.sp,
+        .i = &cpu.i,
+        .regs = &cpu.regs,
+        .stack = &cpu.stack,
+        .state = &cpu.state,
     };
 }
 
-pub fn getMemoryInfo(self: *const Debugger) MemoryInfo {
-    return .{
-        .ram = &self.chip_8.memory.ram,
+pub fn setMemoryInfo(self: *Debugger, memory: *const Memory) void {
+    self.memory_info = MemoryInfo{
+        .ram = &memory.ram,
     };
 }
 
-pub fn getInputInfo(self: *const Debugger) InputInfo {
-    return .{
-        .keypad = &self.chip_8.input.keypad,
+pub fn setInputInfo(self: *Debugger, input: *const Input) void {
+    self.input_info = InputInfo{
+        .keypad = &input.keypad,
     };
 }

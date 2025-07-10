@@ -8,6 +8,7 @@ const Timer = @import("timer.zig");
 const RNG = @import("rng.zig");
 const Clock = @import("clock.zig");
 const ISA = @import("isa.zig");
+const Debugger = @import("debugger.zig");
 
 const CPU_CLOCK_HZ = 600;
 const TIMER_CLOCK_HZ = 60;
@@ -26,8 +27,9 @@ rng: RNG,
 cpu_clock: Clock,
 timer_clock: Clock,
 current_raw_instruction: u16,
+debugger: *Debugger,
 
-pub fn init() Chip8 {
+pub fn init(debugger: *Debugger) Chip8 {
     return .{
         .cpu = CPU.init(),
         .memory = Memory.init(),
@@ -39,6 +41,7 @@ pub fn init() Chip8 {
         .cpu_clock = Clock.init(CPU_CLOCK_HZ),
         .timer_clock = Clock.init(TIMER_CLOCK_HZ),
         .current_raw_instruction = 0x0,
+        .debugger = debugger,
     };
 }
 
@@ -75,6 +78,9 @@ pub fn step(self: *Chip8) !void {
             &self.sound_timer,
             &self.rng,
         );
+
+        self.debugger.setCpuInfo(&self.cpu);
+        self.debugger.setMemoryInfo(&self.memory);
     }
 
     while (self.timer_clock.shouldTick()) {
@@ -93,8 +99,5 @@ pub fn isBeeping(self: *const Chip8) bool {
 
 pub fn setKey(self: *Chip8, key: u4, pressed: bool) void {
     self.input.setKey(key, pressed);
-}
-
-pub fn getKey(self: *const Chip8, key: u4) bool {
-    return self.input.getKey(key);
+    self.debugger.setInputInfo(&self.input);
 }

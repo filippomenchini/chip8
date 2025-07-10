@@ -26,10 +26,9 @@ const KEY_MAPPING = [_]rl.KeyboardKey{
 };
 
 pub fn main() !void {
-    var chip_8 = Chip8.init();
+    var debugger = Debugger.init();
+    var chip_8 = Chip8.init(&debugger);
     try chip_8.loadROM("./breakout.ch8");
-
-    const debugger = Debugger.init(&chip_8);
 
     rl.setTraceLogLevel(.none);
 
@@ -55,14 +54,13 @@ pub fn main() !void {
             break;
         };
 
-        std.debug.print("{X}\n", .{debugger.getCpuInfo().pc.*});
-
         if (chip_8.isBeeping() and !is_playing) {
             if (beep_sound == null) {
                 beep_sound = rl.loadSound("beep.wav") catch |err| {
                     std.debug.print("Could not load beep.wav: {}\n", .{err});
                     continue;
                 };
+                rl.setSoundVolume(beep_sound.?, 0.01);
             }
             if (beep_sound) |sound| {
                 rl.playSound(sound);
