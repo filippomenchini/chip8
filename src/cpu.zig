@@ -1,11 +1,18 @@
 const Memory = @import("memory.zig");
 
+pub const State = union(enum) {
+    running,
+    waiting: u4,
+    idle,
+};
+
 const CPU = @This();
 pc: u16,
 sp: u8,
 i: u16,
 regs: [16]u8,
 stack: [16]u16,
+state: State,
 
 pub fn fetch(self: *CPU, memory: *Memory) u16 {
     const first_byte = @as(u16, memory[self.pc]);

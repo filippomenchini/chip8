@@ -136,7 +136,53 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
             },
             else => return IsaExecutionError.InvalidSubOpCode,
         },
-        0xF => {}, // TODO: implement 0xF instructions with new architecture
+        0xF => switch (instruction.nn) {
+            0x0A => {
+                if (!cpu.state == .waiting) {
+                    cpu.state = .{ .waiting = instruction.vx };
+                    cpu.jump(cpu.pc - 2);
+                    return;
+                }
+
+                for (input.keypad, 0..) |is_pressed, key| {
+                    if (!is_pressed) continue;
+
+                    cpu.regs[cpu.state.waiting] = @intCast(key);
+                    cpu.state = .running;
+                    break;
+                }
+
+                if (!cpu.state == .waiting) return;
+                cpu.jump(cpu.pc - 2);
+            },
+            0x1E => cpu.i +%= cpu.regs[instruction.vx],
+            0x29 => {
+                const hex_digit = cpu.regs[instruction.vx] & 0xF;
+                cpu.i = 0x50 + (hex_digit * 5);
+            },
+            0x33 => {
+                const value = cpu.regs[instruction.vx];
+
+                const hundreds = value / 100;
+                const tens = (value / 10) % 10;
+                const units = value % 10;
+
+                memory[cpu.i] = hundreds;
+                memory[cpu.i + 1] = tens;
+                memory[cpu.i + 2] = units;
+            },
+            0x55 => {
+                for (0..instruction.vx + 1) |i| {
+                    memory[cpu.i + i] = cpu.regs[i];
+                }
+            },
+            0x65 => {
+                for (0..instruction.vx + 1) |i| {
+                    cpu.regs[i] = memory[cpu.i + i];
+                }
+            },
+            else => return IsaExecutionError.InvalidSubOpCode,
+        }, // TODO: implement 0xF instructions for timers
         else => return IsaExecutionError.InvalidOpCode,
     }
 }
