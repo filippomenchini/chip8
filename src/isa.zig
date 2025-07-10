@@ -2,6 +2,7 @@ const CPU = @import("cpu.zig");
 const Memory = @import("memory.zig");
 const Input = @import("input.zig");
 const Output = @import("output.zig");
+const Timer = @import("timer.zig");
 const RNG = @import("rng.zig");
 
 const rng = RNG.init();
@@ -27,7 +28,7 @@ pub fn decode(raw: u16) Instruction {
 }
 
 pub const IsaExecutionError = error{ InvalidOpCode, InvalidSubOpCode };
-pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Input, output: *Output) IsaExecutionError!void {
+pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Input, output: *Output, delay_timer: *Timer, sound_timer: *Timer) IsaExecutionError!void {
     switch (instruction.op_code) {
         0x0 => switch (instruction.nnn) {
             0x0E0 => output.clearDisplay(),
@@ -137,6 +138,7 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
             else => return IsaExecutionError.InvalidSubOpCode,
         },
         0xF => switch (instruction.nn) {
+            0x07 => cpu.regs[instruction.vx] = delay_timer.get(),
             0x0A => {
                 if (!cpu.state == .waiting) {
                     cpu.state = .{ .waiting = instruction.vx };
@@ -155,6 +157,8 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                 if (!cpu.state == .waiting) return;
                 cpu.jump(cpu.pc - 2);
             },
+            0x15 => delay_timer = cpu.regs[instruction.vx],
+            0x18 => sound_timer = cpu.regs[instruction.vx],
             0x1E => cpu.i +%= cpu.regs[instruction.vx],
             0x29 => {
                 const hex_digit = cpu.regs[instruction.vx] & 0xF;
@@ -182,7 +186,7 @@ pub fn execute(instruction: Instruction, cpu: *CPU, memory: *Memory, input: *Inp
                 }
             },
             else => return IsaExecutionError.InvalidSubOpCode,
-        }, // TODO: implement 0xF instructions for timers
+        },
         else => return IsaExecutionError.InvalidOpCode,
     }
 }
