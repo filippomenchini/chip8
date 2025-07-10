@@ -178,18 +178,18 @@ pub fn execute(
                 const tens = (value / 10) % 10;
                 const units = value % 10;
 
-                memory[cpu.i] = hundreds;
-                memory[cpu.i + 1] = tens;
-                memory[cpu.i + 2] = units;
+                memory.write(cpu.i, hundreds);
+                memory.write(cpu.i + 1, tens);
+                memory.write(cpu.i + 2, units);
             },
             0x55 => {
                 for (0..instruction.vx + 1) |i| {
-                    memory[cpu.i + i] = cpu.regs[i];
+                    memory.write(cpu.i + i, cpu.regs[i]);
                 }
             },
             0x65 => {
                 for (0..instruction.vx + 1) |i| {
-                    cpu.regs[i] = memory[cpu.i + i];
+                    cpu.regs[i] = memory.read(cpu.i + i);
                 }
             },
             else => return IsaExecutionError.InvalidSubOpCode,

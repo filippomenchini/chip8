@@ -3,7 +3,6 @@ const Memory = @import("memory.zig");
 pub const State = union(enum) {
     running,
     waiting: u4,
-    idle,
 };
 
 const CPU = @This();
@@ -21,7 +20,7 @@ pub fn init() CPU {
         .stack = [_]u16{0} ** 16,
         .sp = 0,
         .registers = [_]u8{0} ** 16,
-        .state = .idle,
+        .state = .running,
     };
 }
 

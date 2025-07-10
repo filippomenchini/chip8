@@ -9,6 +9,7 @@ pub fn init() Timer {
 }
 
 pub fn update(self: *Timer) void {
+    if (self.timer == 0) return;
     self.timer -= 1;
 }
 
