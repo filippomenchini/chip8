@@ -12,7 +12,3 @@ pub fn init() RNG {
 pub fn next(self: *RNG) u8 {
     return self.prng.random().int(u8);
 }
-
-pub fn setSeed(self: *RNG, seed: u64) void {
-    self.prng = std.Random.DefaultPrng.init(seed);
-}
