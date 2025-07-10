@@ -60,7 +60,7 @@ pub fn loadROM(self: *Chip8, path: []const u8) !void {
 }
 
 pub fn step(self: *Chip8) !void {
-    if (self.cpu_clock.shouldTick()) {
+    while (self.cpu_clock.shouldTick()) {
         const raw_instruction = self.cpu.fetch(&self.memory);
         self.current_raw_instruction = raw_instruction;
 
@@ -77,7 +77,7 @@ pub fn step(self: *Chip8) !void {
         );
     }
 
-    if (self.timer_clock.shouldTick()) {
+    while (self.timer_clock.shouldTick()) {
         self.delay_timer.update();
         self.sound_timer.update();
     }
